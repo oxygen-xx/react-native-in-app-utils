@@ -19,6 +19,10 @@
     return self;
 }
 
++ (BOOL)requiresMainQueueSetup {
+    return NO;
+}
+
 - (dispatch_queue_t)methodQueue
 {
     return dispatch_get_main_queue();
@@ -129,7 +133,7 @@ restoreCompletedTransactionsFailedWithError:(NSError *)error
                 callback(@[@"restore_failed"]);
                 break;
         }
-        
+
         [_callbacks removeObjectForKey:key];
     } else {
         RCTLogWarn(@"No callback registered for restore product request.");
@@ -195,12 +199,23 @@ RCT_EXPORT_METHOD(canMakePayments: (RCTResponseSenderBlock)callback)
 
 RCT_EXPORT_METHOD(receiptData:(RCTResponseSenderBlock)callback)
 {
+    NSString *receipt = [self grandUnifiedReceipt];
+    if (receipt == nil) {
+        callback(@[@"not_available"]);
+    } else {
+        callback(@[[NSNull null], receipt]);
+    }
+}
+
+// Fetch Grand Unified Receipt
+- (NSString *)grandUnifiedReceipt
+{
     NSURL *receiptUrl = [[NSBundle mainBundle] appStoreReceiptURL];
     NSData *receiptData = [NSData dataWithContentsOfURL:receiptUrl];
     if (!receiptData) {
-      callback(@[@"not_available"]);
+        return nil;
     } else {
-      callback(@[[NSNull null], [receiptData base64EncodedStringWithOptions:0]]);
+        return [receiptData base64EncodedStringWithOptions:0];
     }
 }
 
@@ -221,7 +236,7 @@ RCT_EXPORT_METHOD(receiptData:(RCTResponseSenderBlock)callback)
                                       @"currencyCode": [item.priceLocale objectForKey:NSLocaleCurrencyCode],
                                       @"priceString": item.priceString,
                                       @"countryCode": [item.priceLocale objectForKey: NSLocaleCountryCode],
-                                      @"downloadable": item.downloadable ? @"true" : @"false" ,
+                                      @"downloadable": item.isDownloadable ? @"true" : @"false" ,
                                       @"description": item.localizedDescription ? item.localizedDescription : @"",
                                       @"title": item.localizedTitle ? item.localizedTitle : @"",
                                       };
@@ -249,7 +264,7 @@ RCT_EXPORT_METHOD(receiptData:(RCTResponseSenderBlock)callback)
                                                                                      @"transactionDate": @(transaction.transactionDate.timeIntervalSince1970 * 1000),
                                                                                      @"transactionIdentifier": transaction.transactionIdentifier,
                                                                                      @"productIdentifier": transaction.payment.productIdentifier,
-                                                                                     @"transactionReceipt": [[transaction transactionReceipt] base64EncodedStringWithOptions:0]
+                                                                                     @"transactionReceipt": [self grandUnifiedReceipt]
                                                                                      }];
     // originalTransaction is available for restore purchase and purchase of cancelled/expired subscriptions
     SKPaymentTransaction *originalTransaction = transaction.originalTransaction;
@@ -257,7 +272,7 @@ RCT_EXPORT_METHOD(receiptData:(RCTResponseSenderBlock)callback)
         purchase[@"originalTransactionDate"] = @(originalTransaction.transactionDate.timeIntervalSince1970 * 1000);
         purchase[@"originalTransactionIdentifier"] = originalTransaction.transactionIdentifier;
     }
-    
+
     return purchase;
 }
 
